@@ -1,0 +1,16 @@
+[package]
+name = "wren-sys"
+version = "0.1.0"
+edition = "2021"
+authors = ["chy <343938938@qq.com>"]
+description = "FFI bindings to the Wren scripting language API"
+# readme = "README.md"
+keywords = ["wren", "bindings", "ffi"]
+license = "MIT"
+homepage = "https://github.com/chenhuaiyuan/wren-rs"
+repository = "https://github.com/chenhuaiyuan/wren-rs"
+# documentation = ""
+build = "build.rs"
+
+[dependencies]
+libc = "0.2"
