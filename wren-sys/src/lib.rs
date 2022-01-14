@@ -33,8 +33,9 @@ pub struct WrenLoadModuleResult {
     pub user_data: *mut c_void,
 }
 
-pub type WrenLoadModuleCompleteFn =
-    Option<unsafe extern "C" fn(vm: *mut WrenVM, name: *const char, result: WrenLoadModuleResult)>;
+pub type WrenLoadModuleCompleteFn = Option<
+    unsafe extern "C" fn(vm: *mut WrenVM, name: *const c_char, result: WrenLoadModuleResult),
+>;
 
 pub type WrenLoadModuleFn =
     Option<unsafe extern "C" fn(vm: *mut WrenVM, name: *const c_char) -> WrenLoadModuleResult>;

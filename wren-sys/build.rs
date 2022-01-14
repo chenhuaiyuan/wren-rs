@@ -19,12 +19,12 @@ fn main() {
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     let manifest_path = Path::new(&manifest_dir);
     let wren_make_dir: PathBuf;
-    if cfg!(target_os = "windows") {
-        wren_make_dir = manifest_path.join("wren/projects/make");
+    if cfg!(target_os = "macos") {
+        wren_make_dir = manifest_path.join("wren/projects/make.mac");
     } else if cfg!(target_os = "linux") {
         wren_make_dir = manifest_path.join("wren/projects/make");
     } else {
-        wren_make_dir = manifest_path.join("wren/projects/make.mac");
+        wren_make_dir = manifest_path.join("wren/projects/make");
     }
     let wren_lib_dir = manifest_path.join("wren/lib");
 
