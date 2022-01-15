@@ -1,4 +1,7 @@
+use std::ffi::CString;
+
 use crate::ffi;
+use crate::InterpretResult;
 
 fn default_write(_: &mut VM, text: &str) {
     print!("{}", text);
@@ -18,25 +21,24 @@ fn default_load_module(_: &mut VM, module: &str) -> Vec<u8> {
 
     let mut path = PathBuf::from(module);
     path.set_extension("wren");
-    let source = fs::read(path).unwrap();
-    return source;
+    fs::read(path).unwrap()
 }
 
 enum PathType {
-    PATH_TYPE_ABSOLUTE,
-    PATH_TYPE_RELATIVE,
-    PATH_TYPE_SIMPLE,
+    Absolute,
+    Relative,
+    Simple,
 }
 
 impl PartialEq for PathType {
     #[inline]
     fn eq(&self, other: &PathType) -> bool {
-        match (self, other) {
-            (PathType::PATH_TYPE_ABSOLUTE, PathType::PATH_TYPE_ABSOLUTE) => true,
-            (PathType::PATH_TYPE_RELATIVE, PathType::PATH_TYPE_RELATIVE) => true,
-            (PathType::PATH_TYPE_SIMPLE, PathType::PATH_TYPE_SIMPLE) => true,
-            _ => false,
-        }
+        matches!(
+            (self, other),
+            (PathType::Absolute, PathType::Absolute)
+                | (PathType::Relative, PathType::Relative)
+                | (PathType::Simple, PathType::Simple)
+        )
     }
 }
 
@@ -49,7 +51,7 @@ fn is_separator(c: char) -> bool {
     if cfg!(target_os = "windows") && c == '\\' {
         return true;
     }
-    return false;
+    false
 }
 
 fn path_type(path: &[u8]) -> PathType {
@@ -60,24 +62,24 @@ fn path_type(path: &[u8]) -> PathType {
     let third = *path.get(2).unwrap();
     let third = char::from(third);
     if cfg!(target_os = "windows") && first.is_ascii_alphabetic() && second == ':' {
-        return PathType::PATH_TYPE_ABSOLUTE;
+        return PathType::Absolute;
     }
 
     if is_separator(first) {
-        return PathType::PATH_TYPE_ABSOLUTE;
+        return PathType::Absolute;
     }
 
     if first == '.' && is_separator(second) || first == '.' && second == '.' && is_separator(third)
     {
-        return PathType::PATH_TYPE_RELATIVE;
+        return PathType::Relative;
     }
 
-    PathType::PATH_TYPE_SIMPLE
+    PathType::Simple
 }
 
 fn default_resolve_module(_: &mut VM, module: &str, importer: &str) -> Vec<u8> {
     use std::path::PathBuf;
-    if path_type(importer.as_bytes()) == PathType::PATH_TYPE_SIMPLE {
+    if path_type(importer.as_bytes()) == PathType::Simple {
         return Vec::from(importer);
     }
     let mut path = PathBuf::from(module);
@@ -89,24 +91,29 @@ fn default_resolve_module(_: &mut VM, module: &str, importer: &str) -> Vec<u8> {
 }
 
 // fn resolve_module(_: &mut VM, module: &str, importer: &str) -> String {}
-pub struct VM {
-    raw: *mut ffi::WrenVM,
-}
+pub struct VM(*mut ffi::WrenVM);
 impl VM {
     pub fn new(config: &mut Configuration) -> VM {
         let raw = unsafe { ffi::wrenNewVM(&mut config.0) };
-        VM { raw }
+        VM(raw)
     }
     pub fn from_ptr(ptr: *mut ffi::WrenVM) -> VM {
-        VM { raw: ptr }
+        VM(ptr)
     }
-    // pub fn interpret(&mut self, module: &str, source: String) -> ffi::WrenInterpretResult {}
+    pub fn interpret<S: Into<Vec<u8>>>(&mut self, module: &str, source: S) -> InterpretResult {
+        let module = CString::new(module).unwrap();
+        let source = CString::new(source.into()).unwrap();
+        unsafe { ffi::wrenInterpret(self.0, module.as_ptr(), source.as_ptr()) }
+    }
+    pub fn close(&mut self) {
+        unsafe { ffi::wrenFreeVM(self.0) }
+    }
 }
 pub struct Configuration(ffi::WrenConfiguration);
 
 impl Configuration {
     pub fn new() -> Configuration {
-        let mut config = std::mem::MaybeUninit::<ffi::WrenConfiguration>::uninit();
+        let config = std::mem::MaybeUninit::<ffi::WrenConfiguration>::uninit();
         let mut config = unsafe { config.assume_init() };
         unsafe { ffi::wrenInitConfiguration(&mut config) }
         let mut cfg = Configuration(config);
@@ -136,5 +143,11 @@ impl Configuration {
     }
     pub fn set_bind_foreign_class_fn(&mut self, f: ffi::WrenBindForeignClassFn) {
         self.0.bind_foreign_class_fn = f;
+    }
+}
+
+impl Default for Configuration {
+    fn default() -> Self {
+        Self::new()
     }
 }

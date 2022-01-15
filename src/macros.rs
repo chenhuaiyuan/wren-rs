@@ -93,10 +93,11 @@ pub fn _load_module_fn<F: Fn(&mut VM, &str) -> Vec<u8>>(_: F) -> ffi::WrenLoadMo
         vm: *mut ffi::WrenVM,
         module: *const c_char,
     ) -> ffi::WrenLoadModuleResult {
-        let source = mem::transmute::<&(), &F>(&())(
+        let mut source = mem::transmute::<&(), &F>(&())(
             &mut VM::from_ptr(vm),
             CStr::from_ptr(module).to_str().unwrap(),
         );
+        source.push(b'\0');
         let source = CStr::from_bytes_with_nul(source.as_slice()).unwrap();
 
         ffi::WrenLoadModuleResult {
@@ -118,11 +119,12 @@ pub fn _resolve_module_fn<F: Fn(&mut VM, &str, &str) -> Vec<u8>>(_: F) -> ffi::W
         module: *const c_char,
         importer: *const c_char,
     ) -> *const c_char {
-        let path = mem::transmute::<&(), &F>(&())(
+        let mut path = mem::transmute::<&(), &F>(&())(
             &mut VM::from_ptr(vm),
             CStr::from_ptr(module).to_str().unwrap(),
             CStr::from_ptr(importer).to_str().unwrap(),
         );
+        path.push(b'\0');
         let path = CStr::from_bytes_with_nul(path.as_slice()).unwrap();
         path.as_ptr()
     }
