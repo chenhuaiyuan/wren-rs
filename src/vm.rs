@@ -1,7 +1,10 @@
+use std::collections::HashMap;
 use std::ffi::CString;
 
+use ffi::WrenHandle;
+
 use crate::ffi;
-use crate::InterpretResult;
+use crate::{InterpretResult, SlotType};
 
 fn default_write(_: &mut VM, text: &str) {
     print!("{}", text);
@@ -108,7 +111,52 @@ impl VM {
     pub fn close(&mut self) {
         unsafe { ffi::wrenFreeVM(self.0) }
     }
+    pub fn version() {
+        let v = unsafe { ffi::wrenGetVersionNumber() };
+        println!("Wren Version: {}", v);
+    }
+    pub fn collect_garbage(&mut self) {
+        unsafe { ffi::wrenCollectGarbage(self.0) }
+    }
+    pub fn make_call_handle(&mut self, signature: &str) -> Handle {
+        let signature = CString::new(signature).unwrap();
+        let handle = unsafe { ffi::wrenMakeCallHandle(self.0, signature.as_ptr()) };
+        Handle { handle, vm: self.0 }
+    }
+    pub fn Get_slot_count(&mut self) -> i32 {
+        unsafe { ffi::wrenGetSlotCount(self.0) }
+    }
+    pub fn slot(&mut self, num_slots: i32) {
+        unsafe {
+            ffi::wrenEnsureSlots(self.0, num_slots);
+        }
+    }
+    pub fn get_slot_type(&mut self, slot: i32) -> SlotType {
+        unsafe { ffi::wrenGetSlotType(self.0, slot) }
+    }
 }
+
+pub struct Handle {
+    handle: *mut ffi::WrenHandle,
+    vm: *mut ffi::WrenVM,
+}
+impl Handle {
+    pub fn call(&mut self) {
+        unsafe {
+            ffi::wrenCall(self.vm, self.handle);
+        }
+    }
+    // pub fn call<T>(&mut self, argv: T) {}
+
+    pub fn close(&mut self) {
+        unsafe {
+            ffi::wrenReleaseHandle(self.vm, self.handle);
+        }
+    }
+}
+
+pub struct Object(*mut WrenHandle);
+
 pub struct Configuration(ffi::WrenConfiguration);
 
 impl Configuration {

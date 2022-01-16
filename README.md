@@ -1,6 +1,6 @@
 Rust bindings to the Wren scripting language API
 
-Rust绑定到Wren脚本语言API
+将[wren](https://github.com/wren-lang/wren)脚本语言API绑定到rust
 
 目前只在macos系统上进行了测试，还有很多功能未对接
 
