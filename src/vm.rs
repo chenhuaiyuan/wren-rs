@@ -1,10 +1,9 @@
-use std::collections::HashMap;
-use std::ffi::CString;
-
-use ffi::WrenHandle;
+use libc::{c_char, c_int};
+use std::ffi::{CStr, CString};
+use std::{mem, slice};
 
 use crate::ffi;
-use crate::{InterpretResult, SlotType};
+use crate::{InterpretResult, Point, Type};
 
 fn default_write(_: &mut VM, text: &str) {
     print!("{}", text);
@@ -121,41 +120,160 @@ impl VM {
     pub fn make_call_handle(&mut self, signature: &str) -> Handle {
         let signature = CString::new(signature).unwrap();
         let handle = unsafe { ffi::wrenMakeCallHandle(self.0, signature.as_ptr()) };
-        Handle { handle, vm: self.0 }
+        Handle {
+            raw: handle,
+            vm: self.0,
+        }
     }
-    pub fn Get_slot_count(&mut self) -> i32 {
+    pub fn get_slot_count(&mut self) -> i32 {
         unsafe { ffi::wrenGetSlotCount(self.0) }
     }
-    pub fn slot(&mut self, num_slots: i32) {
+    pub fn ensure_slots(&mut self, num_slots: i32) {
         unsafe {
             ffi::wrenEnsureSlots(self.0, num_slots);
         }
     }
-    pub fn get_slot_type(&mut self, slot: i32) -> SlotType {
+    pub fn call(&mut self, handle: Handle) -> InterpretResult {
+        unsafe { ffi::wrenCall(self.0, handle.raw) }
+    }
+    // pub fn handle_close(&mut self, handle: Handle) {
+    //     unsafe { ffi::wrenReleaseHandle(self.0, handle.raw) }
+    // }
+    pub fn get_slot_type(&mut self, slot: i32) -> Type {
+        assert!(
+            self.get_slot_count() > slot,
+            "Slot {} is out of bounds",
+            slot
+        );
         unsafe { ffi::wrenGetSlotType(self.0, slot) }
+    }
+    pub fn get_slot_bool(&mut self, slot: i32) -> Option<bool> {
+        if self.get_slot_type(slot) == Type::Bool {
+            Some(unsafe { ffi::wrenGetSlotBool(self.0, slot) != 0 })
+        } else {
+            None
+        }
+    }
+    pub fn get_slot_bytes(&mut self, slot: i32) -> Option<&[u8]> {
+        if self.get_slot_type(slot) == Type::String {
+            let len: mem::MaybeUninit<i32> = mem::MaybeUninit::uninit();
+            let mut len = unsafe { len.assume_init() };
+            let ptr = unsafe { ffi::wrenGetSlotBytes(self.0, slot, &mut len) };
+            Some(unsafe { slice::from_raw_parts(ptr as *const u8, len as usize) })
+        } else {
+            None
+        }
+    }
+    pub fn get_slot_double(&mut self, slot: i32) -> Option<f64> {
+        if self.get_slot_type(slot) == Type::Num {
+            Some(unsafe { ffi::wrenGetSlotDouble(self.0, slot) })
+        } else {
+            None
+        }
+    }
+    pub fn get_slot_foreign<T>(&mut self, slot: i32) -> Option<Point> {
+        if self.get_slot_type(slot) == Type::Foreign {
+            Some(unsafe { ffi::wrenGetSlotForeign(self.0, slot) })
+        } else {
+            None
+        }
+    }
+    pub fn get_slot_foreign_typed<T>(&mut self, slot: i32) -> &mut T {
+        assert!(
+            self.get_slot_type(slot) == Type::Foreign,
+            "Slot {} must contain a foreign object",
+            slot
+        );
+        unsafe { &mut *(ffi::wrenGetSlotForeign(self.0, slot) as *mut T) }
+    }
+    pub fn get_slot_str(&mut self, slot: i32) -> Option<&str> {
+        if self.get_slot_type(slot) == Type::String {
+            let ptr = unsafe { ffi::wrenGetSlotString(self.0, slot) };
+            Some(unsafe { CStr::from_ptr(ptr).to_str().unwrap() })
+        } else {
+            None
+        }
+    }
+    pub fn get_slot_string(&mut self, slot: i32) -> Option<String> {
+        if self.get_slot_type(slot) == Type::String {
+            let ptr = unsafe { ffi::wrenGetSlotString(self.0, slot) };
+            Some(unsafe { CString::from_raw(ptr as *mut i8).into_string().unwrap() })
+        } else {
+            None
+        }
+    }
+    pub fn get_slot_handle(&mut self, slot: i32) -> Handle {
+        assert!(
+            self.get_slot_count() > slot,
+            "Slot {} is out of bounds",
+            slot
+        );
+        Handle {
+            raw: unsafe { ffi::wrenGetSlotHandle(self.0, slot) },
+            vm: self.0,
+        }
+    }
+    pub fn set_slot_bool(&mut self, slot: i32, value: bool) {
+        self.ensure_slots(slot + 1);
+        unsafe { ffi::wrenSetSlotBool(self.0, slot, value as c_int) }
+    }
+    pub fn set_slot_bytes(&mut self, slot: i32, bytes: &[u8]) {
+        self.ensure_slots(slot + 1);
+        let ptr = bytes.as_ptr() as *const c_char;
+        let len = bytes.len();
+        unsafe { ffi::wrenSetSlotBytes(self.0, slot, ptr, len) }
+    }
+    pub fn set_slot_double(&mut self, slot: i32, value: f64) {
+        self.ensure_slots(slot + 1);
+        unsafe { ffi::wrenSetSlotDouble(self.0, slot, value) }
+    }
+    pub fn set_slot_new_foreign(&mut self, slot: i32, class_slot: i32, size: usize) -> Point {
+        self.ensure_slots(slot + 1);
+        unsafe { ffi::wrenSetSlotNewForeign(self.0, slot, class_slot, size) }
+    }
+    pub fn set_slot_new_foreign_typed<T>(&mut self, slot: i32, class_slot: i32) -> *mut T {
+        self.set_slot_new_foreign(slot, class_slot, mem::size_of::<T>()) as *mut T
+    }
+    pub fn set_slot_new_list(&mut self, slot: i32) {
+        self.ensure_slots(slot + 1);
+        unsafe { ffi::wrenSetSlotNewList(self.0, slot) }
+    }
+    pub fn set_slot_new_map(&mut self, slot: i32) {
+        self.ensure_slots(slot + 1);
+        unsafe { ffi::wrenSetSlotNewMap(self.0, slot) }
+    }
+    pub fn set_slot_null(&mut self, slot: i32) {
+        self.ensure_slots(slot + 1);
+        unsafe { ffi::wrenSetSlotNull(self.0, slot) }
+    }
+    pub fn set_slot_string(&mut self, slot: i32, s: &str) {
+        self.ensure_slots(slot + 1);
+        let cstr = CString::new(s).unwrap();
+        unsafe { ffi::wrenSetSlotString(self.0, slot, cstr.as_ptr()) }
+    }
+    pub fn set_slot_handle(&mut self, slot: i32, handle: &Handle) {
+        self.ensure_slots(slot + 1);
+        unsafe { ffi::wrenSetSlotHandle(self.0, slot, handle.raw) }
+    }
+    pub fn get_list_count(&mut self, slot: i32) -> i32 {
+        if self.get_slot_type(slot) == Type::List {
+            unsafe { ffi::wrenGetListCount(self.0, slot) }
+        } else {
+            0
+        }
     }
 }
 
 pub struct Handle {
-    handle: *mut ffi::WrenHandle,
+    raw: *mut ffi::WrenHandle,
     vm: *mut ffi::WrenVM,
 }
-impl Handle {
-    pub fn call(&mut self) {
-        unsafe {
-            ffi::wrenCall(self.vm, self.handle);
-        }
-    }
-    // pub fn call<T>(&mut self, argv: T) {}
 
-    pub fn close(&mut self) {
-        unsafe {
-            ffi::wrenReleaseHandle(self.vm, self.handle);
-        }
+impl Drop for Handle {
+    fn drop(&mut self) {
+        unsafe { ffi::wrenReleaseHandle(self.vm, self.raw) }
     }
 }
-
-pub struct Object(*mut WrenHandle);
 
 pub struct Configuration(ffi::WrenConfiguration);
 
