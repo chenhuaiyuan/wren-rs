@@ -113,6 +113,7 @@ pub enum WrenType {
     Num,
     Foreign,
     List,
+    Map,
     Null,
     String,
     Unknown,
@@ -178,8 +179,8 @@ extern "C" {
         name: *const c_char,
         slot: c_int,
     );
-    pub fn wrenHasVariable(vm: *mut WrenVM, module: *const char, name: *const char) -> c_int;
-    pub fn wrenHasModule(vm: *mut WrenVM, module: *const char) -> c_int;
+    pub fn wrenHasVariable(vm: *mut WrenVM, module: *const c_char, name: *const c_char) -> c_int;
+    pub fn wrenHasModule(vm: *mut WrenVM, module: *const c_char) -> c_int;
     pub fn wrenAbortFiber(vm: *mut WrenVM, slot: c_int);
     pub fn wrenGetUserData(vm: *mut WrenVM) -> *mut c_void;
     pub fn wrenSetUserData(vm: *mut WrenVM, user_data: *mut c_void);

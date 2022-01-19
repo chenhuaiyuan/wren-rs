@@ -35,12 +35,16 @@ enum PathType {
 impl PartialEq for PathType {
     #[inline]
     fn eq(&self, other: &PathType) -> bool {
-        matches!(
-            (self, other),
-            (PathType::Absolute, PathType::Absolute)
-                | (PathType::Relative, PathType::Relative)
-                | (PathType::Simple, PathType::Simple)
-        )
+        if mem::discriminant(self) == mem::discriminant(other) {
+            matches!(
+                (self, other),
+                (PathType::Absolute, PathType::Absolute)
+                    | (PathType::Relative, PathType::Relative)
+                    | (PathType::Simple, PathType::Simple)
+            )
+        } else {
+            false
+        }
     }
 }
 
@@ -93,48 +97,54 @@ fn default_resolve_module(_: &mut VM, module: &str, importer: &str) -> Vec<u8> {
 }
 
 // fn resolve_module(_: &mut VM, module: &str, importer: &str) -> String {}
-pub struct VM(*mut ffi::WrenVM);
+pub struct VM {
+    raw: *mut ffi::WrenVM,
+    owned: bool,
+}
 impl VM {
     pub fn new(config: &mut Configuration) -> VM {
         let raw = unsafe { ffi::wrenNewVM(&mut config.0) };
-        VM(raw)
+        VM { raw, owned: true }
     }
     pub fn from_ptr(ptr: *mut ffi::WrenVM) -> VM {
-        VM(ptr)
+        VM {
+            raw: ptr,
+            owned: false,
+        }
     }
     pub fn interpret<S: Into<Vec<u8>>>(&mut self, module: &str, source: S) -> InterpretResult {
         let module = CString::new(module).unwrap();
         let source = CString::new(source.into()).unwrap();
-        unsafe { ffi::wrenInterpret(self.0, module.as_ptr(), source.as_ptr()) }
+        unsafe { ffi::wrenInterpret(self.raw, module.as_ptr(), source.as_ptr()) }
     }
-    pub fn close(&mut self) {
-        unsafe { ffi::wrenFreeVM(self.0) }
-    }
+    // pub fn close(&mut self) {
+    //     unsafe { ffi::wrenFreeVM(self.raw) }
+    // }
     pub fn version() {
         let v = unsafe { ffi::wrenGetVersionNumber() };
         println!("Wren Version: {}", v);
     }
     pub fn collect_garbage(&mut self) {
-        unsafe { ffi::wrenCollectGarbage(self.0) }
+        unsafe { ffi::wrenCollectGarbage(self.raw) }
     }
     pub fn make_call_handle(&mut self, signature: &str) -> Handle {
         let signature = CString::new(signature).unwrap();
-        let handle = unsafe { ffi::wrenMakeCallHandle(self.0, signature.as_ptr()) };
+        let handle = unsafe { ffi::wrenMakeCallHandle(self.raw, signature.as_ptr()) };
         Handle {
             raw: handle,
-            vm: self.0,
+            vm: self.raw,
         }
     }
     pub fn get_slot_count(&mut self) -> i32 {
-        unsafe { ffi::wrenGetSlotCount(self.0) }
+        unsafe { ffi::wrenGetSlotCount(self.raw) }
     }
     pub fn ensure_slots(&mut self, num_slots: i32) {
         unsafe {
-            ffi::wrenEnsureSlots(self.0, num_slots);
+            ffi::wrenEnsureSlots(self.raw, num_slots);
         }
     }
     pub fn call(&mut self, handle: Handle) -> InterpretResult {
-        unsafe { ffi::wrenCall(self.0, handle.raw) }
+        unsafe { ffi::wrenCall(self.raw, handle.raw) }
     }
     // pub fn handle_close(&mut self, handle: Handle) {
     //     unsafe { ffi::wrenReleaseHandle(self.0, handle.raw) }
@@ -145,11 +155,11 @@ impl VM {
             "Slot {} is out of bounds",
             slot
         );
-        unsafe { ffi::wrenGetSlotType(self.0, slot) }
+        unsafe { ffi::wrenGetSlotType(self.raw, slot) }
     }
     pub fn get_slot_bool(&mut self, slot: i32) -> Option<bool> {
         if self.get_slot_type(slot) == Type::Bool {
-            Some(unsafe { ffi::wrenGetSlotBool(self.0, slot) != 0 })
+            Some(unsafe { ffi::wrenGetSlotBool(self.raw, slot) != 0 })
         } else {
             None
         }
@@ -158,7 +168,7 @@ impl VM {
         if self.get_slot_type(slot) == Type::String {
             let len: mem::MaybeUninit<i32> = mem::MaybeUninit::uninit();
             let mut len = unsafe { len.assume_init() };
-            let ptr = unsafe { ffi::wrenGetSlotBytes(self.0, slot, &mut len) };
+            let ptr = unsafe { ffi::wrenGetSlotBytes(self.raw, slot, &mut len) };
             Some(unsafe { slice::from_raw_parts(ptr as *const u8, len as usize) })
         } else {
             None
@@ -166,29 +176,29 @@ impl VM {
     }
     pub fn get_slot_double(&mut self, slot: i32) -> Option<f64> {
         if self.get_slot_type(slot) == Type::Num {
-            Some(unsafe { ffi::wrenGetSlotDouble(self.0, slot) })
+            Some(unsafe { ffi::wrenGetSlotDouble(self.raw, slot) })
         } else {
             None
         }
     }
-    pub fn get_slot_foreign<T>(&mut self, slot: i32) -> Option<Point> {
-        if self.get_slot_type(slot) == Type::Foreign {
-            Some(unsafe { ffi::wrenGetSlotForeign(self.0, slot) })
-        } else {
-            None
-        }
-    }
-    pub fn get_slot_foreign_typed<T>(&mut self, slot: i32) -> &mut T {
+    // pub fn get_slot_foreign(&mut self, slot: i32) -> Option<Point> {
+    //     if self.get_slot_type(slot) == Type::Foreign {
+    //         Some(unsafe { ffi::wrenGetSlotForeign(self.raw, slot) })
+    //     } else {
+    //         None
+    //     }
+    // }
+    pub fn get_slot_foreign<T>(&mut self, slot: i32) -> *mut T {
         assert!(
             self.get_slot_type(slot) == Type::Foreign,
             "Slot {} must contain a foreign object",
             slot
         );
-        unsafe { &mut *(ffi::wrenGetSlotForeign(self.0, slot) as *mut T) }
+        unsafe { ffi::wrenGetSlotForeign(self.raw, slot) as *mut T }
     }
     pub fn get_slot_str(&mut self, slot: i32) -> Option<&str> {
         if self.get_slot_type(slot) == Type::String {
-            let ptr = unsafe { ffi::wrenGetSlotString(self.0, slot) };
+            let ptr = unsafe { ffi::wrenGetSlotString(self.raw, slot) };
             Some(unsafe { CStr::from_ptr(ptr).to_str().unwrap() })
         } else {
             None
@@ -196,7 +206,7 @@ impl VM {
     }
     pub fn get_slot_string(&mut self, slot: i32) -> Option<String> {
         if self.get_slot_type(slot) == Type::String {
-            let ptr = unsafe { ffi::wrenGetSlotString(self.0, slot) };
+            let ptr = unsafe { ffi::wrenGetSlotString(self.raw, slot) };
             Some(unsafe { CString::from_raw(ptr as *mut i8).into_string().unwrap() })
         } else {
             None
@@ -209,57 +219,163 @@ impl VM {
             slot
         );
         Handle {
-            raw: unsafe { ffi::wrenGetSlotHandle(self.0, slot) },
-            vm: self.0,
+            raw: unsafe { ffi::wrenGetSlotHandle(self.raw, slot) },
+            vm: self.raw,
         }
     }
     pub fn set_slot_bool(&mut self, slot: i32, value: bool) {
-        self.ensure_slots(slot + 1);
-        unsafe { ffi::wrenSetSlotBool(self.0, slot, value as c_int) }
+        // self.ensure_slots(slot + 1);
+        unsafe { ffi::wrenSetSlotBool(self.raw, slot, value as c_int) }
     }
     pub fn set_slot_bytes(&mut self, slot: i32, bytes: &[u8]) {
-        self.ensure_slots(slot + 1);
+        // self.ensure_slots(slot + 1);
         let ptr = bytes.as_ptr() as *const c_char;
         let len = bytes.len();
-        unsafe { ffi::wrenSetSlotBytes(self.0, slot, ptr, len) }
+        unsafe { ffi::wrenSetSlotBytes(self.raw, slot, ptr, len) }
     }
     pub fn set_slot_double(&mut self, slot: i32, value: f64) {
-        self.ensure_slots(slot + 1);
-        unsafe { ffi::wrenSetSlotDouble(self.0, slot, value) }
+        // self.ensure_slots(slot + 1);
+        unsafe { ffi::wrenSetSlotDouble(self.raw, slot, value) }
     }
-    pub fn set_slot_new_foreign(&mut self, slot: i32, class_slot: i32, size: usize) -> Point {
-        self.ensure_slots(slot + 1);
-        unsafe { ffi::wrenSetSlotNewForeign(self.0, slot, class_slot, size) }
+    pub fn set_slot_new_foreign<T>(&mut self, slot: i32, class_slot: i32) -> *mut T {
+        // self.ensure_slots(slot + 1);
+        unsafe {
+            ffi::wrenSetSlotNewForeign(self.raw, slot, class_slot, mem::size_of::<T>()) as *mut T
+        }
     }
-    pub fn set_slot_new_foreign_typed<T>(&mut self, slot: i32, class_slot: i32) -> *mut T {
-        self.set_slot_new_foreign(slot, class_slot, mem::size_of::<T>()) as *mut T
-    }
+    // pub fn set_slot_new_foreign_typed<T>(&mut self, slot: i32, class_slot: i32) -> *mut T {
+    //     self.set_slot_new_foreign(slot, class_slot, mem::size_of::<T>()) as *mut T
+    // }
     pub fn set_slot_new_list(&mut self, slot: i32) {
-        self.ensure_slots(slot + 1);
-        unsafe { ffi::wrenSetSlotNewList(self.0, slot) }
+        // self.ensure_slots(slot + 1);
+        unsafe { ffi::wrenSetSlotNewList(self.raw, slot) }
     }
     pub fn set_slot_new_map(&mut self, slot: i32) {
-        self.ensure_slots(slot + 1);
-        unsafe { ffi::wrenSetSlotNewMap(self.0, slot) }
+        // self.ensure_slots(slot + 1);
+        unsafe { ffi::wrenSetSlotNewMap(self.raw, slot) }
     }
     pub fn set_slot_null(&mut self, slot: i32) {
-        self.ensure_slots(slot + 1);
-        unsafe { ffi::wrenSetSlotNull(self.0, slot) }
+        // self.ensure_slots(slot + 1);
+        unsafe { ffi::wrenSetSlotNull(self.raw, slot) }
     }
     pub fn set_slot_string(&mut self, slot: i32, s: &str) {
-        self.ensure_slots(slot + 1);
+        // self.ensure_slots(slot + 1);
         let cstr = CString::new(s).unwrap();
-        unsafe { ffi::wrenSetSlotString(self.0, slot, cstr.as_ptr()) }
+        unsafe { ffi::wrenSetSlotString(self.raw, slot, cstr.as_ptr()) }
     }
     pub fn set_slot_handle(&mut self, slot: i32, handle: &Handle) {
-        self.ensure_slots(slot + 1);
-        unsafe { ffi::wrenSetSlotHandle(self.0, slot, handle.raw) }
+        // self.ensure_slots(slot + 1);
+        unsafe { ffi::wrenSetSlotHandle(self.raw, slot, handle.raw) }
     }
     pub fn get_list_count(&mut self, slot: i32) -> i32 {
         if self.get_slot_type(slot) == Type::List {
-            unsafe { ffi::wrenGetListCount(self.0, slot) }
+            unsafe { ffi::wrenGetListCount(self.raw, slot) }
         } else {
             0
+        }
+    }
+    fn check_index(&mut self, list_slot: i32, index: i32) -> i32 {
+        assert!(
+            self.get_slot_type(list_slot) == Type::List,
+            "Slot {} must contain a list",
+            list_slot
+        );
+        let list_count = self.get_list_count(list_slot);
+        let index = if index < 0 {
+            list_count + 1 + index
+        } else {
+            index
+        };
+        assert!(index <= list_count, "List index out of bounds");
+        index
+    }
+    pub fn get_list_element(&mut self, list_slot: i32, index: i32, element_slot: i32) {
+        // self.ensure_slots(element_slot + 1);
+        let index = self.check_index(list_slot, index);
+        unsafe { ffi::wrenGetListElement(self.raw, list_slot, index, element_slot) }
+    }
+    pub fn set_list_element(&mut self, list_slot: i32, index: i32, element_slot: i32) {
+        // self.ensure_slots(element_slot + 1);
+        let index = self.check_index(list_slot, index);
+        unsafe { ffi::wrenSetListElement(self.raw, list_slot, index, element_slot) }
+    }
+    pub fn insert_in_list(&mut self, list_slot: i32, index: i32, element_slot: i32) {
+        assert!(
+            element_slot < self.get_slot_count(),
+            "No element in slot {}",
+            element_slot
+        );
+        let index = self.check_index(list_slot, index);
+        unsafe { ffi::wrenInsertInList(self.raw, list_slot, index, element_slot) }
+    }
+    pub fn get_map_count(&mut self, slot: i32) -> i32 {
+        if self.get_slot_type(slot) == Type::Map {
+            unsafe { ffi::wrenGetMapCount(self.raw, slot) }
+        } else {
+            0
+        }
+    }
+    pub fn get_map_contains_key(&mut self, map_slot: i32, key_slot: i32) -> bool {
+        if self.get_slot_type(map_slot) == Type::Map {
+            unsafe { ffi::wrenGetMapContainsKey(self.raw, map_slot, key_slot) != 0 }
+        } else {
+            false
+        }
+    }
+    pub fn get_map_value(&mut self, map_slot: i32, key_slot: i32, value_slot: i32) {
+        unsafe { ffi::wrenGetMapValue(self.raw, map_slot, key_slot, value_slot) }
+    }
+    pub fn set_map_value(&mut self, map_slot: i32, key_slot: i32, value_slot: i32) {
+        assert!(
+            self.get_slot_type(map_slot) == Type::Map,
+            "Slot {} must contain a map",
+            map_slot
+        );
+        unsafe { ffi::wrenSetMapValue(self.raw, map_slot, key_slot, value_slot) }
+    }
+    pub fn remove_map_value(&mut self, map_slot: i32, key_slot: i32, removed_value_slot: i32) {
+        assert!(
+            self.get_slot_type(map_slot) == Type::Map,
+            "Slot {} must contain a map",
+            map_slot
+        );
+        unsafe { ffi::wrenRemoveMapValue(self.raw, map_slot, key_slot, removed_value_slot) }
+    }
+    pub fn get_variable(&mut self, module: &str, name: &str, slot: i32) {
+        let module_cstr = CString::new(module).unwrap();
+        let name_cstr = CString::new(name).unwrap();
+        unsafe { ffi::wrenGetVariable(self.raw, module_cstr.as_ptr(), name_cstr.as_ptr(), slot) }
+    }
+    pub fn has_variablle(&mut self, module: &str, name: &str) -> bool {
+        let module_cstr = CString::new(module).unwrap();
+        let name_cstr = CString::new(name).unwrap();
+        unsafe { ffi::wrenHasVariable(self.raw, module_cstr.as_ptr(), name_cstr.as_ptr()) != 0 }
+    }
+    pub fn has_module(&mut self, module: &str) -> bool {
+        let module_cstr = CString::new(module).unwrap();
+        unsafe { ffi::wrenHasModule(self.raw, module_cstr.as_ptr()) != 0 }
+    }
+    pub fn abort_fiber(&mut self, slot: i32) {
+        unsafe { ffi::wrenAbortFiber(self.raw, slot) }
+    }
+    pub fn get_user_data<T>(&mut self) -> &mut T {
+        unsafe { &mut *(ffi::wrenGetUserData(self.raw) as *mut T) }
+    }
+    unsafe fn _set_user_data<T>(&mut self, user_data: *mut T) {
+        let user_data = mem::transmute::<*mut T, Point>(user_data);
+        ffi::wrenSetUserData(self.raw, user_data)
+    }
+    pub fn set_user_data<T>(&mut self, user_data: &mut T) {
+        unsafe {
+            self._set_user_data::<T>(user_data as *mut T);
+        }
+    }
+}
+
+impl Drop for VM {
+    fn drop(&mut self) {
+        if self.owned {
+            unsafe { ffi::wrenFreeVM(self.raw) }
         }
     }
 }
