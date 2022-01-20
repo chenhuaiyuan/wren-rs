@@ -143,7 +143,7 @@ impl VM {
             ffi::wrenEnsureSlots(self.raw, num_slots);
         }
     }
-    pub fn call(&mut self, handle: Handle) -> InterpretResult {
+    pub fn call(&mut self, handle: &Handle) -> InterpretResult {
         unsafe { ffi::wrenCall(self.raw, handle.raw) }
     }
     // pub fn handle_close(&mut self, handle: Handle) {
@@ -224,21 +224,20 @@ impl VM {
         }
     }
     pub fn set_slot_bool(&mut self, slot: i32, value: bool) {
-        // self.ensure_slots(slot + 1);
         unsafe { ffi::wrenSetSlotBool(self.raw, slot, value as c_int) }
     }
     pub fn set_slot_bytes(&mut self, slot: i32, bytes: &[u8]) {
-        // self.ensure_slots(slot + 1);
-        let ptr = bytes.as_ptr() as *const c_char;
         let len = bytes.len();
+        self.set_slot_bytes_by_length(slot, bytes, len);
+    }
+    pub fn set_slot_bytes_by_length(&mut self, slot: i32, bytes: &[u8], len: usize) {
+        let ptr = bytes.as_ptr() as *const c_char;
         unsafe { ffi::wrenSetSlotBytes(self.raw, slot, ptr, len) }
     }
     pub fn set_slot_double(&mut self, slot: i32, value: f64) {
-        // self.ensure_slots(slot + 1);
         unsafe { ffi::wrenSetSlotDouble(self.raw, slot, value) }
     }
     pub fn set_slot_new_foreign<T>(&mut self, slot: i32, class_slot: i32) -> *mut T {
-        // self.ensure_slots(slot + 1);
         unsafe {
             ffi::wrenSetSlotNewForeign(self.raw, slot, class_slot, mem::size_of::<T>()) as *mut T
         }
@@ -247,24 +246,19 @@ impl VM {
     //     self.set_slot_new_foreign(slot, class_slot, mem::size_of::<T>()) as *mut T
     // }
     pub fn set_slot_new_list(&mut self, slot: i32) {
-        // self.ensure_slots(slot + 1);
         unsafe { ffi::wrenSetSlotNewList(self.raw, slot) }
     }
     pub fn set_slot_new_map(&mut self, slot: i32) {
-        // self.ensure_slots(slot + 1);
         unsafe { ffi::wrenSetSlotNewMap(self.raw, slot) }
     }
     pub fn set_slot_null(&mut self, slot: i32) {
-        // self.ensure_slots(slot + 1);
         unsafe { ffi::wrenSetSlotNull(self.raw, slot) }
     }
     pub fn set_slot_string(&mut self, slot: i32, s: &str) {
-        // self.ensure_slots(slot + 1);
         let cstr = CString::new(s).unwrap();
         unsafe { ffi::wrenSetSlotString(self.raw, slot, cstr.as_ptr()) }
     }
     pub fn set_slot_handle(&mut self, slot: i32, handle: &Handle) {
-        // self.ensure_slots(slot + 1);
         unsafe { ffi::wrenSetSlotHandle(self.raw, slot, handle.raw) }
     }
     pub fn get_list_count(&mut self, slot: i32) -> i32 {
@@ -290,12 +284,10 @@ impl VM {
         index
     }
     pub fn get_list_element(&mut self, list_slot: i32, index: i32, element_slot: i32) {
-        // self.ensure_slots(element_slot + 1);
         let index = self.check_index(list_slot, index);
         unsafe { ffi::wrenGetListElement(self.raw, list_slot, index, element_slot) }
     }
     pub fn set_list_element(&mut self, list_slot: i32, index: i32, element_slot: i32) {
-        // self.ensure_slots(element_slot + 1);
         let index = self.check_index(list_slot, index);
         unsafe { ffi::wrenSetListElement(self.raw, list_slot, index, element_slot) }
     }
