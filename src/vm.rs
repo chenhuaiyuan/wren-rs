@@ -1,6 +1,6 @@
 use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
-use std::{mem, slice};
+use std::{fs, mem, path, slice};
 
 use crate::ffi;
 use crate::{InterpretResult, Point, Type};
@@ -18,10 +18,7 @@ fn default_error(_: &mut VM, _type: ffi::WrenErrorType, module: &str, line: i32,
 }
 
 fn default_load_module(_: &mut VM, module: &str) -> Vec<u8> {
-    use std::fs;
-    use std::path::PathBuf;
-
-    let mut path = PathBuf::from(module);
+    let mut path = path::PathBuf::from(module);
     path.set_extension("wren");
     fs::read(path).unwrap()
 }
@@ -84,11 +81,10 @@ fn path_type(path: &[u8]) -> PathType {
 }
 
 fn default_resolve_module(_: &mut VM, module: &str, importer: &str) -> Vec<u8> {
-    use std::path::PathBuf;
     if path_type(importer.as_bytes()) == PathType::Simple {
         return Vec::from(importer);
     }
-    let mut path = PathBuf::from(module);
+    let mut path = path::PathBuf::from(module);
     path.pop();
 
     path.push(importer);
@@ -111,6 +107,19 @@ impl VM {
             raw: ptr,
             owned: false,
         }
+    }
+    pub fn read_file(&mut self, path: &str) -> InterpretResult {
+        let path_bytes = path.as_bytes();
+        let source = fs::read(path).unwrap();
+        let mut path = path::PathBuf::from(path);
+        path.pop();
+        let module = if path_type(path_bytes) == PathType::Simple {
+            path.as_path().file_stem().unwrap()
+        } else {
+            path.pop();
+            path.as_os_str()
+        };
+        self.interpret(module.to_str().unwrap_or("default"), source)
     }
     pub fn interpret<S: Into<Vec<u8>>>(&mut self, module: &str, source: S) -> InterpretResult {
         let module = CString::new(module).unwrap();

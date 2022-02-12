@@ -6,7 +6,7 @@ So far it's only been tested on MacOS
 
 目前只在macos系统上进行了测试
 
-所有api都已对接，但还需要进行大量测试
+目前还有很多工作未完成，还不能真正使用
 
 #### example
 
