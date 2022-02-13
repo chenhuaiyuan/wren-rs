@@ -23,6 +23,13 @@ fn default_load_module(_: &mut VM, module: &str) -> Vec<u8> {
     fs::read(path).unwrap()
 }
 
+fn get_file_name(path: &str) -> &str {
+    let v: Vec<&str> = path.rsplit('/').collect();
+    let name = v[0];
+    let file = name.split_once('.').unwrap();
+    file.0
+}
+
 enum PathType {
     Absolute,
     Relative,
@@ -110,13 +117,14 @@ impl VM {
     }
     pub fn read_file(&mut self, path: &str) -> InterpretResult {
         let path_bytes = path.as_bytes();
+        let file = get_file_name(path);
         let source = fs::read(path).unwrap();
         let mut path = path::PathBuf::from(path);
-        path.pop();
         let module = if path_type(path_bytes) == PathType::Simple {
             path.as_path().file_stem().unwrap()
         } else {
             path.pop();
+            path.push(file);
             path.as_os_str()
         };
         self.interpret(module.to_str().unwrap_or("default"), source)
