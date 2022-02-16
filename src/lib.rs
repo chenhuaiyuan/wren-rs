@@ -12,4 +12,4 @@ pub use vm::Configuration;
 pub use vm::Handle;
 pub use vm::VM;
 pub type Point = *mut libc::c_void;
-pub use vm::ForeignObj;
+pub use vm::ForeignData;

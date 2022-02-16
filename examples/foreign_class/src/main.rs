@@ -4,7 +4,7 @@ extern crate wren_rs;
 use libc::c_void;
 use std::mem;
 use wren_rs::{
-    Configuration, ForeignClassMethods, ForeignMethodFn, ForeignObj, InterpretResult, VM,
+    Configuration, ForeignClassMethods, ForeignData, ForeignMethodFn, InterpretResult, VM,
 };
 
 static mut FINALIZED: i32 = 0;
@@ -23,7 +23,7 @@ fn counter_allocate(vm: &mut VM) {
 }
 
 fn counter_allocate2(vm: &mut VM) {
-    let mut value: ForeignObj<f64> = vm.set_slot_new_foreign2::<f64>(0, 0);
+    let mut value: ForeignData<f64> = vm.set_slot_new_foreign2::<f64>(0, 0);
     let inner = value.inner();
     *inner = 0.0;
 }
@@ -38,7 +38,7 @@ fn counter_increment(vm: &mut VM) {
 }
 
 fn counter_increment2(vm: &mut VM) {
-    let mut value: ForeignObj<f64> = vm.get_slot_foreign2(0);
+    let mut value: ForeignData<f64> = vm.get_slot_foreign2(0);
     let increment: f64 = vm.get_slot_double(1).unwrap();
 
     let inner = value.inner();
@@ -53,7 +53,7 @@ fn counter_value(vm: &mut VM) {
 }
 
 fn counter_value2(vm: &mut VM) {
-    let mut value: ForeignObj<f64> = vm.get_slot_foreign2(0);
+    let mut value: ForeignData<f64> = vm.get_slot_foreign2(0);
     let inner = value.inner();
     vm.set_slot_double(0, *inner);
 }
@@ -77,7 +77,7 @@ fn point_allocate(vm: &mut VM) {
 }
 
 fn point_allocate2(vm: &mut VM) {
-    let mut coordinates: ForeignObj<[f64; 3]> = vm.set_slot_new_foreign2::<[f64; 3]>(0, 0);
+    let mut coordinates: ForeignData<[f64; 3]> = vm.set_slot_new_foreign2::<[f64; 3]>(0, 0);
     let inner = coordinates.inner();
 
     if vm.get_slot_count() == 1 {
@@ -101,7 +101,7 @@ fn point_translate(vm: &mut VM) {
 }
 
 fn point_translate2(vm: &mut VM) {
-    let mut coordinates: ForeignObj<[f64; 3]> = vm.get_slot_foreign2(0);
+    let mut coordinates: ForeignData<[f64; 3]> = vm.get_slot_foreign2(0);
     let inner = coordinates.inner();
     inner[0] += vm.get_slot_double(1).unwrap();
     inner[1] += vm.get_slot_double(2).unwrap();
@@ -122,7 +122,7 @@ fn point_to_string(vm: &mut VM) {
 }
 
 fn point_to_string2(vm: &mut VM) {
-    let mut coordinates: ForeignObj<[f64; 3]> = vm.get_slot_foreign2(0);
+    let mut coordinates: ForeignData<[f64; 3]> = vm.get_slot_foreign2(0);
     let inner = coordinates.inner();
     let result = format!("({}, {}, {})", inner[0], inner[1], inner[2]);
     vm.set_slot_string(0, &result);
@@ -136,7 +136,7 @@ fn resource_allocate(vm: &mut VM) {
 }
 
 fn resource_allocate2(vm: &mut VM) {
-    let mut value: ForeignObj<i32> = vm.set_slot_new_foreign2::<i32>(0, 0);
+    let mut value: ForeignData<i32> = vm.set_slot_new_foreign2::<i32>(0, 0);
     let inner = value.inner();
     *inner = 123;
 }
@@ -155,8 +155,8 @@ fn resource_finalize(data: *mut c_void) {
 }
 
 fn resource_finalize2(data: *mut c_void) {
-    let mut value: ForeignObj<i32> =
-        unsafe { mem::transmute::<*mut c_void, ForeignObj<i32>>(data) };
+    let mut value: ForeignData<i32> =
+        unsafe { mem::transmute::<*mut c_void, ForeignData<i32>>(data) };
     let inner = value.inner();
     if *inner != 123 {
         panic!("value is not 123")
