@@ -99,6 +99,17 @@ fn default_resolve_module(_: &mut VM, module: &str, importer: &str) -> Vec<u8> {
     Vec::from(p)
 }
 
+pub struct ForeignObj<T> {
+    inner: *mut T,
+}
+
+impl<T> ForeignObj<T> {
+    pub fn inner(&mut self) -> &mut T {
+        // unsafe { mem::transmute::<*mut T, &mut T>(self.inner) }
+        unsafe { &mut *(self.inner) }
+    }
+}
+
 // fn resolve_module(_: &mut VM, module: &str, importer: &str) -> String {}
 pub struct VM {
     raw: *mut ffi::WrenVM,
@@ -213,6 +224,10 @@ impl VM {
         );
         unsafe { ffi::wrenGetSlotForeign(self.raw, slot) as *mut T }
     }
+    pub fn get_slot_foreign2<T>(&mut self, slot: i32) -> ForeignObj<T> {
+        let value: *mut T = self.get_slot_foreign(slot);
+        ForeignObj { inner: value }
+    }
     pub fn get_slot_str(&mut self, slot: i32) -> Option<&str> {
         if self.get_slot_type(slot) == Type::String {
             let ptr = unsafe { ffi::wrenGetSlotString(self.raw, slot) };
@@ -259,9 +274,10 @@ impl VM {
             ffi::wrenSetSlotNewForeign(self.raw, slot, class_slot, mem::size_of::<T>()) as *mut T
         }
     }
-    // pub fn set_slot_new_foreign_typed<T>(&mut self, slot: i32, class_slot: i32) -> *mut T {
-    //     self.set_slot_new_foreign(slot, class_slot, mem::size_of::<T>()) as *mut T
-    // }
+    pub fn set_slot_new_foreign2<T>(&mut self, slot: i32, class_slot: i32) -> ForeignObj<T> {
+        let value = self.set_slot_new_foreign(slot, class_slot);
+        ForeignObj { inner: value }
+    }
     pub fn set_slot_new_list(&mut self, slot: i32) {
         unsafe { ffi::wrenSetSlotNewList(self.raw, slot) }
     }
